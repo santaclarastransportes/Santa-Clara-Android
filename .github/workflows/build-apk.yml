@@ -1,44 +1,33 @@
 
-
 name: Gerar APK Santa Clara
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    paths:
+      - 'Santa_Clara_Transportes_Android_Com_Logo_CORRETO.zip'
+      - '.github/workflows/build-apk.yml'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Baixar arquivos
+      - name: Baixar repositorio
         uses: actions/checkout@v4
 
-      - name: Preparar Java
+      - name: Preparar projeto atualizado
+        run: |
+          mkdir projeto
+          unzip -o Santa_Clara_Transportes_Android_Com_Logo_CORRETO.zip -d projeto
+          cp -r projeto/. .
+          rm -rf projeto
+
+      - name: Configurar Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Preparar Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
-
-      - name: Extrair projeto
-        run: |
-          ZIP=$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1)
-          if [ -z "$ZIP" ]; then
-            echo "ERRO: ZIP nao encontrado na raiz"
-            exit 1
-          fi
-          mkdir -p /tmp/santa-clara
-          unzip -o "$ZIP" -d /tmp/santa-clara
-          ROOT=$(find /tmp/santa-clara -name settings.gradle -type f | head -n 1 | xargs dirname)
-          cp "$ROOT/settings.gradle" .
-          cp "$ROOT/build.gradle" .
-          cp "$ROOT/gradle.properties" .
-          cp -R "$ROOT/app" .
 
       - name: Compilar APK
         run: gradle assembleDebug
@@ -46,6 +35,5 @@ jobs:
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Santa-Clara-APK
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
+          name: Santa-Clara-Transportes
+          path: app/build/outputs/apk/debug/app-debug.apk
