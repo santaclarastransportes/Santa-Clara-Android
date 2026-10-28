@@ -4,9 +4,7 @@ name: Gerar APK Santa Clara
 on:
   workflow_dispatch:
   push:
-    paths:
-      - 'Santa_Clara_Transportes_Android_Com_Logo_CORRETO.zip'
-      - '.github/workflows/build-apk.yml'
+    branches: [main]
 
 jobs:
   build:
@@ -16,12 +14,19 @@ jobs:
       - name: Baixar repositorio
         uses: actions/checkout@v4
 
-      - name: Preparar projeto atualizado
+      - name: Preparar projeto
         run: |
+          ZIP=$(find . -maxdepth 1 -type f -name '*Logo_CORRETO*.zip' | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "ZIP do projeto nao encontrado"
+            exit 1
+          fi
           mkdir projeto
-          unzip -o Santa_Clara_Transportes_Android_Com_Logo_CORRETO.zip -d projeto
-          cp -r projeto/. .
-          rm -rf projeto
+          unzip -q "$ZIP" -d projeto
+          cp -r projeto/app ./app
+          cp projeto/build.gradle ./build.gradle
+          cp projeto/settings.gradle ./settings.gradle
+          cp projeto/gradle.properties ./gradle.properties
 
       - name: Configurar Java
         uses: actions/setup-java@v4
@@ -29,11 +34,69 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Compilar APK
-        run: gradle assembleDebug
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Preparar assinatura
+        env:
+          KEY_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p app
+          echo "$KEY_BASE64" | base64 --decode > app/santa-clara-release.jks
+          test -s app/santa-clara-release.jks
+
+      - name: Configurar versao de lancamento
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          cat > app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'br.com.santaclara.transportes'
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId 'br.com.santaclara.transportes'
+                  minSdk 23
+                  targetSdk 35
+                  versionCode 1
+                  versionName '1.0'
+              }
+
+              signingConfigs {
+                  release {
+                      storeFile file('santa-clara-release.jks')
+                      storePassword System.getenv('STORE_PASSWORD')
+                      keyAlias System.getenv('KEY_ALIAS')
+                      keyPassword System.getenv('KEY_PASSWORD')
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                      minifyEnabled false
+                  }
+              }
+          }
+          EOF
+
+      - name: Gerar APK release
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: gradle assembleRelease
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Santa-Clara-Transportes
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Santa-Clara-Transportes-Release
+          path: app/build/outputs/apk/release/app-release.apk
